@@ -1,0 +1,22 @@
+﻿services:
+  - type: web
+    name: stock-market-ai
+    env: docker
+    plan: free
+    dockerfilePath: Dockerfile
+    healthCheckPath: /health
+    disk:
+      name: stock-data
+      mountPath: /app/data
+      sizeGB: 1
+    envVars:
+      - key: AUTONOMOUS_TRADING_ENABLED
+        value: "True"
+      - key: AUTONOMOUS_SCAN_INTERVAL
+        value: "30"
+      - key: MAX_CONCURRENT_POSITIONS
+        value: "3"
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false

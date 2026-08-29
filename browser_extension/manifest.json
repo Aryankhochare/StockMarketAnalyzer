@@ -1,0 +1,38 @@
+{
+  "manifest_version": 3,
+  "name": "AI Stock Analyzer - Live Data Bridge",
+  "version": "1.0.0",
+  "description": "Streams live browser ticks and DOM quote updates directly to local AI Stock Analyzer Backend.",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "scripting"
+  ],
+  "host_permissions": [
+    "*://*.nseindia.com/*",
+    "*://*.tradingview.com/*",
+    "*://*.zerodha.com/*",
+    "*://*.dhan.co/*",
+    "*://*.groww.in/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.nseindia.com/*",
+        "*://*.tradingview.com/*",
+        "*://*.zerodha.com/*",
+        "*://*.dhan.co/*",
+        "*://*.groww.in/*"
+      ],
+      "js": ["content_script.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "AI Live Data Bridge"
+  }
+}

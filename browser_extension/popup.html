@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { width: 220px; padding: 12px; font-family: sans-serif; background: #111827; color: #F3F4F6; margin: 0; }
+    h3 { margin: 0 0 8px 0; font-size: 14px; color: #3B82F6; }
+    .status { display: flex; align-items: center; gap: 6px; font-size: 12px; margin-bottom: 8px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #EF4444; }
+    .dot.online { background: #10B981; }
+    .info { font-size: 11px; color: #9CA3AF; line-height: 1.4; }
+  </style>
+</head>
+<body>
+  <h3>AI Market Data Bridge</h3>
+  <div class="status">
+    <div class="dot online" id="statusDot"></div>
+    <span id="statusText">Connected to Local AI</span>
+  </div>
+  <div class="info">
+    Bridge is active. Ticks scraped from NSE, TradingView, or broker tabs are streamed live to local AI Decision Backend.
+  </div>
+</body>
+</html>
