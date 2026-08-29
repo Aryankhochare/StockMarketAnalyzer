@@ -18,7 +18,7 @@ DEFAULT_WATCHLIST = [
     {"symbol": "INFY", "ticker": "INFY.NS", "type": "EQUITY", "exchange": "NSE"},
     {"symbol": "HDFCBANK", "ticker": "HDFCBANK.NS", "type": "EQUITY", "exchange": "NSE"},
     {"symbol": "ICICIBANK", "ticker": "ICICIBANK.NS", "type": "EQUITY", "exchange": "NSE"},
-    {"symbol": "TATAMOTORS", "ticker": "TATAMOTORS.NS", "type": "EQUITY", "exchange": "NSE"},
+    {"symbol": "ITC", "ticker": "ITC.NS", "type": "EQUITY", "exchange": "NSE"},
     {"symbol": "SBIN", "ticker": "SBIN.NS", "type": "EQUITY", "exchange": "NSE"},
     {"symbol": "BHARTIARTL", "ticker": "BHARTIARTL.NS", "type": "EQUITY", "exchange": "NSE"},
 ]
