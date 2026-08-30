@@ -123,7 +123,8 @@ class DecisionEngine:
             "total_position_value": risk_evaluation["total_position_value"],
             "regime_info": regime_info,
             "mtf_info": mtf_info,
-            "news_info": news_info
+            "news_info": news_info,
+            "factor_attribution": prediction.get("factor_attribution", {})
         }
 
 # Global Instance

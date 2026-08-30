@@ -134,6 +134,60 @@ document.addEventListener("DOMContentLoaded", () => {
 
         html += `</div>`;
         container.innerHTML = html;
+
+        // Render SHAP factor attribution breakdown
+        renderSHAPAttribution(sig.factor_attribution || (sig.prediction && sig.prediction.factor_attribution));
+    }
+
+    // Render Explainable AI (SHAP) Factor Attribution
+    function renderSHAPAttribution(attribution) {
+        const container = document.getElementById("shap-container");
+        if (!container) return;
+
+        if (!attribution || (!attribution.top_drivers && !attribution.top_drags)) {
+            container.innerHTML = `<div style="font-size:11px; color:#9CA3AF; text-align:center;">Factor weights calibrated to neutral benchmark</div>`;
+            return;
+        }
+
+        const drivers = attribution.top_drivers || [];
+        const drags = attribution.top_drags || [];
+
+        if (drivers.length === 0 && drags.length === 0) {
+            container.innerHTML = `<div style="font-size:11px; color:#9CA3AF; text-align:center;">Neutral factor balance</div>`;
+            return;
+        }
+
+        let html = `<div style="font-size:11px; font-weight:600; color:#10B981; margin-bottom:2px;">Top Bullish Drivers:</div>`;
+        if (drivers.length > 0) {
+            html += drivers.map(d => `
+                <div style="display:flex; justify-content:space-between; align-items:center; font-size:11px;">
+                    <span style="color:#D1D5DB;">• ${d.label} (${d.value})</span>
+                    <span style="color:#10B981; font-weight:600;">+${Math.abs(d.impact_pct).toFixed(1)}%</span>
+                </div>
+                <div style="width:100%; background:rgba(255,255,255,0.05); height:4px; border-radius:2px; margin-bottom:4px;">
+                    <div style="width:${Math.min(100, Math.abs(d.impact_pct)*2.5)}%; background:#10B981; height:4px; border-radius:2px;"></div>
+                </div>
+            `).join('');
+        } else {
+            html += `<div style="font-size:11px; color:#9CA3AF; margin-bottom:4px;">None</div>`;
+        }
+
+        html += `<div style="font-size:11px; font-weight:600; color:#EF4444; margin-top:6px; margin-bottom:2px;">Top Resistance / Drags:</div>`;
+        if (drags.length > 0) {
+            html += drags.map(d => `
+                <div style="display:flex; justify-content:space-between; align-items:center; font-size:11px;">
+                    <span style="color:#D1D5DB;">• ${d.label} (${d.value})</span>
+                    <span style="color:#EF4444; font-weight:600;">-${Math.abs(d.impact_pct).toFixed(1)}%</span>
+                </div>
+                <div style="width:100%; background:rgba(255,255,255,0.05); height:4px; border-radius:2px; margin-bottom:4px;">
+                    <div style="width:${Math.min(100, Math.abs(d.impact_pct)*2.5)}%; background:#EF4444; height:4px; border-radius:2px;"></div>
+                </div>
+            `).join('');
+        } else {
+            html += `<div style="font-size:11px; color:#9CA3AF;">None</div>`;
+        }
+
+        container.innerHTML = html;
     }
 
     // Global Paper Trade Execution
@@ -234,6 +288,26 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
+    // Fetch Market Session & Calendar Status
+    async function fetchMarketStatus() {
+        try {
+            const res = await fetch('/api/market-status');
+            const data = await res.json();
+            const daemonEl = document.getElementById("nav-daemon");
+            if (daemonEl) {
+                if (data.is_open) {
+                    daemonEl.innerText = "LIVE TRADING";
+                    daemonEl.className = "stat-value green";
+                } else {
+                    daemonEl.innerText = "MARKET CLOSED (Self-Learning Active)";
+                    daemonEl.className = "stat-value blue";
+                }
+            }
+        } catch (e) {
+            console.debug("Could not fetch market status:", e);
+        }
+    }
+
     // Connect Dashboard WebSocket
     function connectWebSocket() {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -330,6 +404,8 @@ document.addEventListener("DOMContentLoaded", () => {
     loadCandles(currentSymbol, currentTicker);
     fetchSummary();
     fetchIndiaVIX();
+    fetchMarketStatus();
     connectWebSocket();
     setInterval(fetchIndiaVIX, 15000);
+    setInterval(fetchMarketStatus, 30000);
 });

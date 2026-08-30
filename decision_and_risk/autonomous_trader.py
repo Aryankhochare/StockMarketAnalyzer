@@ -8,9 +8,12 @@ from config import (
     MAX_CONCURRENT_POSITIONS
 )
 from data_bridge.data_manager import data_manager
+from data_bridge.market_calendar import market_calendar
 from decision_and_risk.decision_engine import decision_engine
 from decision_and_risk.paper_trader import paper_trader
 from ai_engine.loss_analyzer import loss_analyzer
+from ai_engine.ensemble_model import ensemble_model
+from quant_engine.news_event_engine import news_event_engine
 from data_bridge.telegram_service import telegram_service
 
 logger = logging.getLogger("AutonomousTrader")
@@ -56,14 +59,50 @@ class AutonomousTrader:
 
     async def _trading_loop(self):
         import time
-        logger.info("Entering 24/7 Autonomous Paper Trading Loop...")
+        logger.info("Entering 24/7 Autonomous Trading & Offline Learning Engine...")
+        last_learning_time = 0
+
         while True:
             try:
                 if not self.is_active:
                     await asyncio.sleep(5)
                     continue
 
+                session_info = market_calendar.get_session_status()
+                is_open = session_info["is_open"]
                 self.last_scan_time = time.strftime("%Y-%m-%d %H:%M:%S")
+
+                # =========================================================================
+                # 🌙 1. OFFLINE / WEEKEND MODE (Market Closed) -> Self-Learning & Research
+                # =========================================================================
+                if not is_open:
+                    now_ts = time.time()
+                    # Run self-learning cycle every 10 minutes (600s) during off-hours
+                    if now_ts - last_learning_time >= 600:
+                        last_learning_time = now_ts
+                        logger.info(f"[{session_info['status']}] Running Autonomous Offline Self-Learning & Research Cycle...")
+                        try:
+                            # 1. News & Event scanning for Monday / next opening catalysts
+                            news_event_engine.analyze_headlines()
+                            
+                            # 2. Historical loss analysis review & dynamic penalty consolidation
+                            loss_diagnostics = loss_analyzer.get_all_loss_diagnostics()
+                            
+                            # 3. Model recalibration on latest historical candles
+                            df_hist = data_manager.get_historical_candles("^NSEI", period="1y", interval="1d")
+                            if not df_hist.empty:
+                                ensemble_model.train_and_calibrate(df_hist)
+                            
+                            logger.info(f"Offline Learning Cycle Complete: Refined penalties from {len(loss_diagnostics)} historical loss patterns.")
+                        except Exception as learn_err:
+                            logger.debug(f"Offline learning task notice: {learn_err}")
+
+                    await asyncio.sleep(60) # Sleep 1 minute before checking session status again
+                    continue
+
+                # =========================================================================
+                # ☀️ 2. LIVE MARKET HOURS (09:15 AM - 03:30 PM IST) -> Live Execution
+                # =========================================================================
                 vix_snapshot = data_manager.get_india_vix_snapshot()
                 
                 for item in DEFAULT_WATCHLIST:
@@ -111,11 +150,12 @@ class AutonomousTrader:
 
                     await asyncio.sleep(1.5) # Gentle pause between symbols
 
+                await asyncio.sleep(self.scan_interval)
+
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.error(f"Error in Autonomous Trading loop: {e}")
-
-            await asyncio.sleep(self.scan_interval)
+                await asyncio.sleep(self.scan_interval)
 
 autonomous_trader = AutonomousTrader()

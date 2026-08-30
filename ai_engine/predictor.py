@@ -8,6 +8,7 @@ from quant_engine.relative_strength import RelativeStrengthAnalyzer
 from ai_engine.ensemble_model import ensemble_model
 from ai_engine.regime_detector import RegimeDetector
 from ai_engine.loss_analyzer import loss_analyzer
+from ai_engine.shap_explainer import explainable_ai
 
 logger = logging.getLogger("AIPredictor")
 
@@ -74,6 +75,9 @@ class AIPredictor:
         confidence = max(prob_bull, prob_bear, prob_flat)
         expected_return_pct = round((prob_bull * 1.8) - (prob_bear * 1.8), 2)
 
+        action = "BUY" if prob_bull > prob_bear and prob_bull >= 0.52 else ("SELL" if prob_bear > prob_bull and prob_bear >= 0.52 else "HOLD")
+        attribution = explainable_ai.explain_prediction(latest_features.iloc[0], confidence, action)
+
         return {
             "symbol": symbol,
             "prob_bull": prob_bull,
@@ -83,7 +87,8 @@ class AIPredictor:
             "expected_return_pct": expected_return_pct,
             "regime_info": regime_info,
             "mtf_info": mtf_info,
-            "news_info": news_info
+            "news_info": news_info,
+            "factor_attribution": attribution
         }
 
 # Global Instance

@@ -10,6 +10,7 @@ from config import DEFAULT_WATCHLIST, BASE_DIR
 from data_bridge.browser_extension_bridge import bridge_manager
 from data_bridge.data_manager import data_manager
 from data_bridge.telegram_service import telegram_service
+from data_bridge.market_calendar import market_calendar
 from ai_engine.model_trainer import ModelTrainer
 from ai_engine.ensemble_model import ensemble_model
 from quant_engine.news_event_engine import news_event_engine
@@ -149,6 +150,11 @@ async def get_news_catalysts(symbol: str = "NIFTY 50"):
 async def get_india_vix():
     vix = data_manager.get_india_vix_snapshot()
     return JSONResponse(content=vix)
+
+@app.get("/api/market-status")
+async def get_market_session_status():
+    status = market_calendar.get_session_status()
+    return JSONResponse(content=status)
 
 @app.post("/api/paper-trade")
 async def execute_paper_trade(payload: Dict[str, Any]):
