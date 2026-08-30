@@ -145,6 +145,11 @@ async def get_news_catalysts(symbol: str = "NIFTY 50"):
     symbol_catalyst = news_event_engine.get_symbol_catalyst(symbol)
     return JSONResponse(content={"all_catalysts": catalysts, "symbol_catalyst": symbol_catalyst})
 
+@app.get("/api/india-vix")
+async def get_india_vix():
+    vix = data_manager.get_india_vix_snapshot()
+    return JSONResponse(content=vix)
+
 @app.post("/api/paper-trade")
 async def execute_paper_trade(payload: Dict[str, Any]):
     result = paper_trader.open_position(payload)

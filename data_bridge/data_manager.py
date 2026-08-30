@@ -102,5 +102,36 @@ class DataManager:
         """Fetch live option chain PCR and open interest snapshot."""
         return self.nse_fetcher.fetch_option_chain(symbol)
 
+    def get_india_vix_snapshot(self) -> Dict[str, Any]:
+        """Fetch India VIX snapshot: current level, previous close, and percentage change."""
+        try:
+            df_vix = yf.download("^INDIAVIX", period="5d", interval="1d", progress=False)
+            if df_vix.empty:
+                return {"vix": 14.5, "change_pct": 0.0, "status": "DEFAULT"}
+            
+            if isinstance(df_vix.columns, pd.MultiIndex):
+                df_vix.columns = [col[0] for col in df_vix.columns]
+                
+            close_prices = df_vix["Close"].dropna() if "Close" in df_vix.columns else df_vix.get("close", pd.Series()).dropna()
+            if len(close_prices) >= 2:
+                curr_vix = float(close_prices.iloc[-1])
+                prev_vix = float(close_prices.iloc[-2])
+                change_pct = ((curr_vix - prev_vix) / prev_vix) * 100.0 if prev_vix > 0 else 0.0
+            elif len(close_prices) == 1:
+                curr_vix = float(close_prices.iloc[-1])
+                change_pct = 0.0
+            else:
+                curr_vix = 14.5
+                change_pct = 0.0
+
+            return {
+                "vix": round(curr_vix, 2),
+                "change_pct": round(change_pct, 2),
+                "status": "ELEVATED" if curr_vix > 18.0 else ("COMPRESSED" if curr_vix < 13.0 else "NORMAL")
+            }
+        except Exception as e:
+            logger.debug(f"Error fetching India VIX: {e}")
+            return {"vix": 14.5, "change_pct": 0.0, "status": "FALLBACK"}
+
 # Global Instance
 data_manager = DataManager()

@@ -176,25 +176,61 @@ document.addEventListener("DOMContentLoaded", () => {
             // Render Active Positions Table
             const posBody = document.getElementById("positions-table-body");
             if (summary.active_positions.length === 0) {
-                posBody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:#9CA3AF;">No active open positions</td></tr>`;
+                posBody.innerHTML = `<tr><td colspan="9" style="text-align:center; color:#9CA3AF;">No active open positions</td></tr>`;
             } else {
-                posBody.innerHTML = summary.active_positions.map(p => `
-                    <tr>
-                        <td><b>${p.symbol}</b></td>
-                        <td><span class="badge ${p.action}">${p.action}</span></td>
-                        <td>${p.quantity}</td>
-                        <td>₹${p.entry_price.toFixed(2)}</td>
-                        <td>₹${p.current_price.toFixed(2)}</td>
-                        <td style="color:#EF4444;">₹${p.stop_loss.toFixed(2)}</td>
-                        <td style="color:#10B981;">₹${p.target.toFixed(2)}</td>
-                        <td style="color:${p.unrealized_pnl >= 0 ? '#10B981' : '#EF4444'}; font-weight:600;">
-                            ${p.unrealized_pnl >= 0 ? '+' : ''}₹${p.unrealized_pnl.toFixed(2)}
-                        </td>
-                    </tr>
-                `).join('');
+                posBody.innerHTML = summary.active_positions.map(p => {
+                    const isBE = p.is_break_even;
+                    const trailSL = p.trailing_stop || p.stop_loss;
+                    const isProfitableLock = (p.action === 'BUY' && trailSL > p.entry_price) || (p.action === 'SELL' && trailSL < p.entry_price);
+                    
+                    let protectionBadge = `<span style="font-size:10px; padding:2px 6px; border-radius:3px; background:rgba(255,255,255,0.05); color:#9CA3AF;">Initial SL</span>`;
+                    if (isProfitableLock) {
+                        protectionBadge = `<span style="font-size:10px; padding:2px 6px; border-radius:3px; background:rgba(16,185,129,0.2); color:#10B981; font-weight:600;">Trailing Locked</span>`;
+                    } else if (isBE) {
+                        protectionBadge = `<span style="font-size:10px; padding:2px 6px; border-radius:3px; background:rgba(59,130,246,0.2); color:#3B82F6; font-weight:600;">Risk-Free BE</span>`;
+                    }
+
+                    return `
+                        <tr>
+                            <td><b>${p.symbol}</b></td>
+                            <td><span class="badge ${p.action}">${p.action}</span></td>
+                            <td>${p.quantity}</td>
+                            <td>₹${p.entry_price.toFixed(2)}</td>
+                            <td>₹${p.current_price.toFixed(2)}</td>
+                            <td style="color:${isProfitableLock ? '#10B981' : '#EF4444'}; font-weight:600;">₹${trailSL.toFixed(2)}</td>
+                            <td style="color:#10B981;">₹${p.target.toFixed(2)}</td>
+                            <td>${protectionBadge}</td>
+                            <td style="color:${p.unrealized_pnl >= 0 ? '#10B981' : '#EF4444'}; font-weight:600;">
+                                ${p.unrealized_pnl >= 0 ? '+' : ''}₹${p.unrealized_pnl.toFixed(2)}
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
             }
         } catch (e) {
             console.error("Error fetching paper summary:", e);
+        }
+    }
+
+    // Fetch India VIX Volatility Snapshot
+    async function fetchIndiaVIX() {
+        try {
+            const res = await fetch('/api/india-vix');
+            const data = await res.json();
+            const vixEl = document.getElementById("nav-vix");
+            if (vixEl) {
+                const sign = data.change_pct >= 0 ? '+' : '';
+                vixEl.innerText = `${data.vix.toFixed(2)} (${sign}${data.change_pct.toFixed(1)}%)`;
+                if (data.status === 'ELEVATED') {
+                    vixEl.className = "stat-value red";
+                } else if (data.status === 'COMPRESSED') {
+                    vixEl.className = "stat-value blue";
+                } else {
+                    vixEl.className = "stat-value green";
+                }
+            }
+        } catch (e) {
+            console.debug("Could not fetch India VIX:", e);
         }
     }
 
@@ -293,5 +329,7 @@ document.addEventListener("DOMContentLoaded", () => {
     loadWatchlist();
     loadCandles(currentSymbol, currentTicker);
     fetchSummary();
+    fetchIndiaVIX();
     connectWebSocket();
+    setInterval(fetchIndiaVIX, 15000);
 });

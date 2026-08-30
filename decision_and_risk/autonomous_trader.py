@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 import logging
 from typing import Dict, Any
 from config import (
@@ -64,6 +64,7 @@ class AutonomousTrader:
                     continue
 
                 self.last_scan_time = time.strftime("%Y-%m-%d %H:%M:%S")
+                vix_snapshot = data_manager.get_india_vix_snapshot()
                 
                 for item in DEFAULT_WATCHLIST:
                     symbol = item["symbol"]
@@ -94,7 +95,7 @@ class AutonomousTrader:
                         # 3. If under max concurrent positions limit, evaluate new AI trade opportunity
                         if len(paper_trader.active_positions) < self.max_concurrent_positions:
                             option_snapshot = data_manager.get_option_chain_snapshot(symbol)
-                            signal = decision_engine.evaluate_trade(symbol, df, option_snapshot)
+                            signal = decision_engine.evaluate_trade(symbol, df, option_snapshot, vix_snapshot)
 
                             action = signal.get("action")
                             if action in ["BUY", "SELL"]:

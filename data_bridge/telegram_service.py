@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 import asyncio
 import requests
 from typing import Dict, Any, Optional
@@ -77,8 +77,17 @@ class TelegramService:
         reason = trade.get("close_reason", "MANUAL")
         diagnosis = trade.get("loss_diagnosis", "")
 
-        if reason == "TARGET_HIT" or pnl > 0:
+        if reason == "TARGET_HIT":
             header = "🎯 *TRADE WIN: TARGET HIT!*"
+            status_icon = "✅"
+        elif reason == "TRAILING_STOP_HIT":
+            header = "🚀 *TRADE WIN: TRAILING STOP LOCKED PROFIT!*"
+            status_icon = "💰"
+        elif reason == "BREAK_EVEN_HIT":
+            header = "🛡️ *TRADE CLOSED: BREAK-EVEN (RISK FREE)*"
+            status_icon = "⚖️"
+        elif pnl > 0:
+            header = "✅ *TRADE CLOSED WITH PROFIT!*"
             status_icon = "✅"
         else:
             header = "🛑 *TRADE LOSS: STOP-LOSS HIT!*"

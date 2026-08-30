@@ -4,7 +4,13 @@ import sqlite3
 import logging
 from typing import Dict, Any, List, Optional
 from pathlib import Path
-from config import INITIAL_ACCOUNT_BALANCE, PAPER_DB_PATH
+from config import (
+    INITIAL_ACCOUNT_BALANCE,
+    PAPER_DB_PATH,
+    TRAILING_STOP_ENABLED,
+    TRAILING_STOP_ATR_MULTIPLIER,
+    BREAK_EVEN_TRIGGER_R
+)
 
 logger = logging.getLogger("PaperTrader")
 
@@ -54,7 +60,12 @@ class PaperTrader:
                     entry_price REAL NOT NULL,
                     current_price REAL NOT NULL,
                     stop_loss REAL NOT NULL,
+                    initial_stop_loss REAL NOT NULL,
                     target REAL NOT NULL,
+                    peak_price REAL NOT NULL,
+                    trailing_stop REAL NOT NULL,
+                    is_break_even INTEGER DEFAULT 0,
+                    atr REAL DEFAULT 0.0,
                     unrealized_pnl REAL DEFAULT 0.0,
                     unrealized_pnl_pct REAL DEFAULT 0.0,
                     predicted_win_prob REAL DEFAULT 0.0,
@@ -63,6 +74,23 @@ class PaperTrader:
                     raw_data TEXT
                 )
             """)
+
+            # Add columns if migrating from older schema
+            try:
+                cursor.execute("ALTER TABLE active_positions ADD COLUMN initial_stop_loss REAL DEFAULT 0.0")
+            except Exception: pass
+            try:
+                cursor.execute("ALTER TABLE active_positions ADD COLUMN peak_price REAL DEFAULT 0.0")
+            except Exception: pass
+            try:
+                cursor.execute("ALTER TABLE active_positions ADD COLUMN trailing_stop REAL DEFAULT 0.0")
+            except Exception: pass
+            try:
+                cursor.execute("ALTER TABLE active_positions ADD COLUMN is_break_even INTEGER DEFAULT 0")
+            except Exception: pass
+            try:
+                cursor.execute("ALTER TABLE active_positions ADD COLUMN atr REAL DEFAULT 0.0")
+            except Exception: pass
             
             # 3. Trade History Table
             cursor.execute("""
@@ -172,14 +200,24 @@ class PaperTrader:
         if confidence > 1.0:
             confidence = confidence / 100.0
 
+        initial_sl = round(float(signal.get("stop_loss", 0.0)), 2)
+        target = round(float(signal.get("target", 0.0)), 2)
+        risk_dist = abs(entry_price - initial_sl)
+        atr_val = float(signal.get("atr", risk_dist / 1.5 if risk_dist > 0 else entry_price * 0.015))
+
         position = {
             "id": pos_id,
             "symbol": symbol,
             "action": action,
             "quantity": quantity,
             "entry_price": round(entry_price, 2),
-            "stop_loss": round(float(signal.get("stop_loss", 0.0)), 2),
-            "target": round(float(signal.get("target", 0.0)), 2),
+            "stop_loss": initial_sl,
+            "initial_stop_loss": initial_sl,
+            "target": target,
+            "peak_price": round(entry_price, 2),
+            "trailing_stop": initial_sl,
+            "is_break_even": 0,
+            "atr": round(atr_val, 2),
             "current_price": round(entry_price, 2),
             "unrealized_pnl": 0.0,
             "unrealized_pnl_pct": 0.0,
@@ -195,12 +233,15 @@ class PaperTrader:
                 cursor.execute("""
                     INSERT INTO active_positions (
                         symbol, action, quantity, entry_price, current_price,
-                        stop_loss, target, unrealized_pnl, unrealized_pnl_pct,
+                        stop_loss, initial_stop_loss, target, peak_price, trailing_stop,
+                        is_break_even, atr, unrealized_pnl, unrealized_pnl_pct,
                         predicted_win_prob, confidence, open_time, raw_data
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     symbol, action, quantity, position["entry_price"], position["current_price"],
-                    position["stop_loss"], position["target"], 0.0, 0.0,
+                    position["stop_loss"], position["initial_stop_loss"], position["target"],
+                    position["peak_price"], position["trailing_stop"], position["is_break_even"],
+                    position["atr"], 0.0, 0.0,
                     position["predicted_win_prob"], position["confidence"], position["open_time"],
                     json.dumps(signal)
                 ))
@@ -209,11 +250,11 @@ class PaperTrader:
             logger.error(f"Failed to persist open position: {e}")
 
         self.active_positions[symbol] = position
-        logger.info(f"[Paper Trade OPENED] {action} {quantity} {symbol} @ {entry_price:.2f} tokens (Win Prob: {win_prob*100:.1f}%)")
+        logger.info(f"[Paper Trade OPENED] {action} {quantity} {symbol} @ {entry_price:.2f} tokens (SL: {initial_sl}, TP: {target}, Win Prob: {win_prob*100:.1f}%)")
         return {"status": "SUCCESS", "position": position}
 
     def update_live_price(self, symbol: str, current_price: float) -> Optional[Dict[str, Any]]:
-        """Updates open position P&L with live tick and checks for stop-loss or target hits."""
+        """Updates open position P&L with live tick and checks for stop-loss, trailing stop, or target hits."""
         if symbol not in self.active_positions or current_price <= 0:
             return None
 
@@ -223,29 +264,90 @@ class PaperTrader:
         entry = pos["entry_price"]
         qty = pos["quantity"]
         action = pos["action"]
-        stop_loss = pos["stop_loss"]
+        initial_sl = pos.get("initial_stop_loss", pos["stop_loss"])
         target = pos["target"]
+        atr_val = pos.get("atr", abs(entry - initial_sl) / 1.5 if abs(entry - initial_sl) > 0 else entry * 0.015)
+        risk_dist = abs(entry - initial_sl)
 
-        # Calculate P&L
+        # ----------------------------------------------------
+        # BUY Positions Logic (Trailing Stop & Break-Even)
+        # ----------------------------------------------------
         if action == "BUY":
             pnl = (current_price - entry) * qty
-            pnl_pct = ((current_price - entry) / entry) * 100.0
+            pnl_pct = ((current_price - entry) / entry) * 100.0 if entry > 0 else 0.0
             
+            # Update Peak High Price
+            pos["peak_price"] = max(pos.get("peak_price", entry), current_price)
+            
+            # 1. Break-Even Ratchet: Trigger when price gains +1.0R profit
+            if risk_dist > 0 and current_price >= entry + (BREAK_EVEN_TRIGGER_R * risk_dist):
+                if not pos.get("is_break_even"):
+                    pos["is_break_even"] = 1
+                    pos["trailing_stop"] = max(pos.get("trailing_stop", initial_sl), entry)
+                    pos["stop_loss"] = pos["trailing_stop"]
+                    logger.info(f"[Break-Even Activated] {symbol} moved to risk-free stop at ₹{entry:.2f}")
+
+            # 2. Dynamic Chandelier/ATR Trailing Stop
+            if TRAILING_STOP_ENABLED and atr_val > 0:
+                calculated_trail = round(pos["peak_price"] - (TRAILING_STOP_ATR_MULTIPLIER * atr_val), 2)
+                current_effective_sl = pos.get("trailing_stop", pos["stop_loss"])
+                if calculated_trail > current_effective_sl:
+                    pos["trailing_stop"] = calculated_trail
+                    pos["stop_loss"] = calculated_trail
+
+            effective_sl = pos.get("trailing_stop", pos["stop_loss"])
+
             # Check Exit Triggers
             if current_price >= target:
                 return self.close_position(symbol, current_price, "TARGET_HIT")
-            elif current_price <= stop_loss:
-                return self.close_position(symbol, current_price, "STOP_LOSS_HIT")
+            elif current_price <= effective_sl:
+                if effective_sl > entry:
+                    reason = "TRAILING_STOP_HIT"
+                elif pos.get("is_break_even"):
+                    reason = "BREAK_EVEN_HIT"
+                else:
+                    reason = "STOP_LOSS_HIT"
+                return self.close_position(symbol, current_price, reason)
                 
+        # ----------------------------------------------------
+        # SELL Positions Logic (Trailing Stop & Break-Even)
+        # ----------------------------------------------------
         elif action == "SELL":
             pnl = (entry - current_price) * qty
-            pnl_pct = ((entry - current_price) / entry) * 100.0
+            pnl_pct = ((entry - current_price) / entry) * 100.0 if entry > 0 else 0.0
             
+            # Update Trough Low Price
+            pos["peak_price"] = min(pos.get("peak_price", entry), current_price)
+            
+            # 1. Break-Even Ratchet: Trigger when price drops +1.0R profit
+            if risk_dist > 0 and current_price <= entry - (BREAK_EVEN_TRIGGER_R * risk_dist):
+                if not pos.get("is_break_even"):
+                    pos["is_break_even"] = 1
+                    pos["trailing_stop"] = min(pos.get("trailing_stop", initial_sl), entry)
+                    pos["stop_loss"] = pos["trailing_stop"]
+                    logger.info(f"[Break-Even Activated] {symbol} moved to risk-free stop at ₹{entry:.2f}")
+
+            # 2. Dynamic Chandelier/ATR Trailing Stop
+            if TRAILING_STOP_ENABLED and atr_val > 0:
+                calculated_trail = round(pos["peak_price"] + (TRAILING_STOP_ATR_MULTIPLIER * atr_val), 2)
+                current_effective_sl = pos.get("trailing_stop", pos["stop_loss"])
+                if calculated_trail < current_effective_sl:
+                    pos["trailing_stop"] = calculated_trail
+                    pos["stop_loss"] = calculated_trail
+
+            effective_sl = pos.get("trailing_stop", pos["stop_loss"])
+
             # Check Exit Triggers
             if current_price <= target:
                 return self.close_position(symbol, current_price, "TARGET_HIT")
-            elif current_price >= stop_loss:
-                return self.close_position(symbol, current_price, "STOP_LOSS_HIT")
+            elif current_price >= effective_sl:
+                if effective_sl < entry:
+                    reason = "TRAILING_STOP_HIT"
+                elif pos.get("is_break_even"):
+                    reason = "BREAK_EVEN_HIT"
+                else:
+                    reason = "STOP_LOSS_HIT"
+                return self.close_position(symbol, current_price, reason)
 
         pos["unrealized_pnl"] = round(pnl, 2)
         pos["unrealized_pnl_pct"] = round(pnl_pct, 2)

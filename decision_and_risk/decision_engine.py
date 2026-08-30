@@ -25,7 +25,8 @@ class DecisionEngine:
         self,
         symbol: str,
         df_full: pd.DataFrame,
-        option_snapshot: Optional[Dict[str, Any]] = None
+        option_snapshot: Optional[Dict[str, Any]] = None,
+        vix_snapshot: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         if df_full.empty or len(df_full) < 15:
             return {
@@ -76,8 +77,8 @@ class DecisionEngine:
                 "prediction": prediction
             }
 
-        # Step 2: Check Risk Engine for levels & position sizing
-        risk_evaluation = risk_engine.calculate_position_size_and_levels(entry_price, action, atr)
+        # Step 2: Check Risk Engine for levels & position sizing with VIX scaling
+        risk_evaluation = risk_engine.calculate_position_size_and_levels(entry_price, action, atr, vix_snapshot)
         if not risk_evaluation["allowed"]:
             return {
                 "symbol": symbol,
@@ -117,6 +118,7 @@ class DecisionEngine:
             "quantity": risk_evaluation["quantity"],
             "stop_loss": risk_evaluation["stop_loss"],
             "target": risk_evaluation["target"],
+            "atr": risk_evaluation.get("atr", atr),
             "risk_reward_ratio": risk_evaluation["risk_reward_ratio"],
             "total_position_value": risk_evaluation["total_position_value"],
             "regime_info": regime_info,

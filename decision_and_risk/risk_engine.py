@@ -1,6 +1,6 @@
 import logging
 import pandas as pd
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from config import (
     INITIAL_ACCOUNT_BALANCE,
     MAX_RISK_PER_TRADE_PCT,
@@ -27,10 +27,11 @@ class RiskEngine:
         self,
         entry_price: float,
         direction: str,
-        atr: float
+        atr: float,
+        vix_snapshot: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
-        Calculates exact shares/quantity, stop loss, and target price.
+        Calculates exact shares/quantity, stop loss, and target price with VIX-regime scaling.
         ATR multiplier for stop loss = 1.5 * ATR
         Target multiplier = 2.5 * ATR (Risk-Reward = 1.67)
         """
@@ -43,7 +44,16 @@ class RiskEngine:
             return {"allowed": False, "reason": f"Daily loss limit (₹{max_daily_loss:.2f}) breached"}
 
         # Calculate max capital risk amount for this trade
-        max_risk_amount = self.account_balance * (MAX_RISK_PER_TRADE_PCT / 100.0)
+        risk_pct = MAX_RISK_PER_TRADE_PCT
+        
+        # Scale down risk allocation during elevated VIX / volatility shocks
+        if vix_snapshot:
+            vix_val = float(vix_snapshot.get("vix", 14.5))
+            vix_change = float(vix_snapshot.get("change_pct", 0.0))
+            if vix_val >= 18.0 or vix_change >= 8.0:
+                risk_pct *= 0.60 # Scale down position size by 40% in high volatility turbulence
+
+        max_risk_amount = self.account_balance * (risk_pct / 100.0)
 
         # Stop distance based on 1.5 x ATR
         stop_distance = round(1.5 * atr, 2)
@@ -92,6 +102,7 @@ class RiskEngine:
             "entry_price": entry_price,
             "stop_loss": stop_loss,
             "target": target,
+            "atr": round(atr, 2),
             "risk_per_share": round(risk_per_share, 2),
             "reward_per_share": round(reward_per_share, 2),
             "risk_reward_ratio": round(risk_reward_ratio, 2),

@@ -23,13 +23,23 @@ DEFAULT_WATCHLIST = [
     {"symbol": "BHARTIARTL", "ticker": "BHARTIARTL.NS", "type": "EQUITY", "exchange": "NSE"},
 ]
 
-# Risk Engine Parameters
+# Risk Engine & Trailing Stop Parameters
 INITIAL_ACCOUNT_BALANCE = 2000.0   # 2,000 Paper Tokens / Credits
 MAX_RISK_PER_TRADE_PCT = 2.0        # Max 2.0% capital risk per trade (40 tokens)
 MAX_DAILY_DRAWDOWN_PCT = 3.0        # Max 3.0% daily loss limit (60 tokens)
 MIN_RISK_REWARD_RATIO = 1.5         # Minimum 1:1.5 Risk-to-Reward ratio
 ESTIMATED_TRANSACTION_COST_PCT = 0.05 # Transaction cost estimate (~0.05%)
 ESTIMATED_SLIPPAGE_PCT = 0.03       # Average execution slippage (~0.03%)
+
+# Dynamic Trailing Stop-Loss & Break-Even Ratchet
+TRAILING_STOP_ENABLED = True
+TRAILING_STOP_ATR_MULTIPLIER = 1.5   # Distance behind peak price (1.5 x ATR)
+BREAK_EVEN_TRIGGER_R = 1.0           # Move SL to Break-Even at +1R profit
+
+# India VIX Volatility Regime Engine
+VIX_TICKER = "^INDIAVIX"
+HIGH_VIX_THRESHOLD = 18.0            # Elevated turbulence limit
+LOW_VIX_THRESHOLD = 13.0             # Low volatility compression limit
 
 # Autonomous Trading Engine
 AUTONOMOUS_TRADING_ENABLED = os.getenv("AUTONOMOUS_TRADING_ENABLED", "True").lower() in ("true", "1", "yes")
